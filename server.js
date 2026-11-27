@@ -86,15 +86,20 @@ function parseTransaksi(text) {
     };
 }
 
+const fsSync = require('fs');
+const chromiumPath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium';
+
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         headless: true,
+        executablePath: fsSync.existsSync(chromiumPath) ? chromiumPath : undefined,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
-            '--disable-gpu'
+            '--disable-gpu',
+            '--no-zygote'
         ]
     }
 });
