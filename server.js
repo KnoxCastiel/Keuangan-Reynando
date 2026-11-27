@@ -24,7 +24,6 @@ const writeDB = (data) => {
     fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 };
 
-// Deteksi Kategori Otomatis dari Keterangan
 function deteksiKategori(keterangan, tipe) {
     const teks = keterangan.toLowerCase();
     if (tipe === 'pemasukan') {
@@ -41,7 +40,6 @@ function deteksiKategori(keterangan, tipe) {
     return 'Lainnya';
 }
 
-// Konversi Singkatan Nominal (misal: 10k -> 10000, 1.5jt -> 1500000)
 function parseNominal(rawNominal) {
     let str = rawNominal.toLowerCase().trim();
     let multiplier = 1;
@@ -54,7 +52,6 @@ function parseNominal(rawNominal) {
         str = str.replace(/(jt|juta)$/, '');
     }
 
-    // Jika memakai multiplier (misal 1.5jt), titik dianggap desimal; jika tidak (10.000), titik dihapus
     if (multiplier > 1) {
         str = str.replace(',', '.');
     } else {
@@ -65,7 +62,6 @@ function parseNominal(rawNominal) {
     return isNaN(angka) ? null : Math.round(angka * multiplier);
 }
 
-// Parser Pesan WhatsApp
 function parseTransaksi(text) {
     const cleanText = text.trim();
     const isPemasukan = /^(masuk|pemasukan|gaji|terima|\+)/i.test(cleanText);
@@ -90,8 +86,6 @@ function parseTransaksi(text) {
     };
 }
 
-// Inisialisasi WhatsApp Client
-const client = new Client({
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
@@ -129,7 +123,6 @@ client.on('message_create', async (msg) => {
     const pesan = msg.body.trim();
     const cmd = pesan.toLowerCase();
 
-    // Perintah Bantuan
     if (cmd === 'help' || cmd === 'bantuan' || cmd === 'menu') {
         return msg.reply(
             `ℹ️ *Panduan Catatan Keuangan WA*\n\n` +
@@ -144,7 +137,6 @@ client.on('message_create', async (msg) => {
         );
     }
 
-    // Perintah Cek Saldo & Laporan Hari Ini
     if (cmd === 'saldo' || cmd === 'laporan') {
         const data = readDB();
         const hariIni = new Date().toISOString().slice(0, 10);
@@ -165,7 +157,6 @@ client.on('message_create', async (msg) => {
         );
     }
 
-    // Perintah Hapus Transaksi Terakhir
     if (cmd === 'hapus' || cmd === 'batal') {
         const data = readDB();
         if (data.length === 0) return msg.reply('ℹ️ Belum ada data transaksi untuk dihapus.');
@@ -174,7 +165,6 @@ client.on('message_create', async (msg) => {
         return msg.reply(`🗑️ Transaksi terakhir dihapus:\n_${terhapus.keterangan} (Rp${terhapus.nominal.toLocaleString('id-ID')})_`);
     }
 
-    // Parsing Transaksi
     const transaksi = parseTransaksi(pesan);
     if (transaksi) {
         const data = readDB();
@@ -191,9 +181,10 @@ client.on('message_create', async (msg) => {
     }
 });
 
-client.initialize();
+client.initialize().catch((err) => {
+    console.error('⚠️ Gagal inisialisasi WA Client:', err.message);
+});
 
-// API Endpoints
 app.get('/api/status', (req, res) => {
     res.json({ status: waStatus, qr: latestQrDataUrl });
 });
@@ -225,7 +216,6 @@ app.delete('/api/transaksi/:id', (req, res) => {
     res.json({ status: 'terhapus' });
 });
 
-// Ekspor CSV (Bisa dibuka langsung di Excel / Google Sheets HP)
 app.get('/api/export', (req, res) => {
     const data = readDB();
     let csv = 'Tanggal,Waktu,Jenis,Kategori,Keterangan,Nominal\n';
@@ -241,6 +231,6 @@ app.get('/api/export', (req, res) => {
     res.send(csv);
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server berjalan di port ${PORT}`);
 });
