@@ -4,7 +4,6 @@
   "description": "Aplikasi Pencatat Keuangan Harian via WhatsApp Mobile-First",
   "main": "server.js",
   "scripts": {
-    "build": "npx puppeteer browsers install chrome",
     "start": "node server.js"
   },
   "dependencies": {
