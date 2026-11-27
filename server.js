@@ -1,18 +1,13 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcodeTerminal = require('qrcode-terminal');
-const QRCode = require('qrcode');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DB_FILE = path.join(__dirname, 'database.json');
 
-let latestQrDataUrl = null;
-let waStatus = 'Menghubungkan...';
-
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
 const readDB = () => {
@@ -86,87 +81,58 @@ function parseTransaksi(text) {
     };
 }
 
-const fsSync = require('fs');
-const chromiumPath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium';
+// Endpoint Webhook WhatsApp (untuk Fonnte / Gateway WA)
+app.post('/api/webhook-wa', (req, res) => {
+    const body = req.body || {};
+    const pesan = (body.message || body.pesan || body.text || '').trim();
 
-const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: {
-        headless: true,
-        executablePath: fsSync.existsSync(chromiumPath) ? chromiumPath : undefined,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--no-zygote'
-        ]
-    }
-});
+    if (!pesan) return res.json({ status: 'diabaikan' });
 
-client.on('qr', async (qr) => {
-    waStatus = 'Menunggu Scan QR';
-    latestQrDataUrl = await QRCode.toDataURL(qr);
-    qrcodeTerminal.generate(qr, { small: true });
-});
-
-client.on('ready', () => {
-    waStatus = 'Terhubung';
-    latestQrDataUrl = null;
-    console.log('✅ Bot WhatsApp Terhubung!');
-});
-
-client.on('disconnected', () => {
-    waStatus = 'Terputus';
-});
-
-client.on('message_create', async (msg) => {
-    if (msg.from.includes('@g.us') || msg.from === 'status@broadcast') return;
-    if (msg.body.startsWith('✅') || msg.body.startsWith('📊') || msg.body.startsWith('🗑️') || msg.body.startsWith('ℹ️')) return;
-
-    const pesan = msg.body.trim();
     const cmd = pesan.toLowerCase();
 
     if (cmd === 'help' || cmd === 'bantuan' || cmd === 'menu') {
-        return msg.reply(
-            `ℹ️ *Panduan Catatan Keuangan WA*\n\n` +
-            `1️⃣ *Catat Pengeluaran:*\n` +
-            `Ketik: _Jajan 10.000_ atau _Kopi 15k_\n\n` +
-            `2️⃣ *Catat Pemasukan:*\n` +
-            `Ketik: _Masuk Gaji 3jt_ atau _Masuk Bonus 250rb_\n\n` +
-            `3️⃣ *Cek Ringkasan:*\n` +
-            `Ketik: _Saldo_ atau _Laporan_\n\n` +
-            `4️⃣ *Batalkan Input Terakhir:*\n` +
-            `Ketik: _Hapus_`
-        );
+        return res.json({
+            reply:
+                `ℹ️ *Panduan Catatan Keuangan WA*\n\n` +
+                `1️⃣ *Catat Pengeluaran:*\n` +
+                `Ketik: _Jajan 10.000_ atau _Kopi 15k_\n\n` +
+                `2️⃣ *Catat Pemasukan:*\n` +
+                `Ketik: _Masuk Gaji 3jt_ atau _Masuk Bonus 250rb_\n\n` +
+                `3️⃣ *Cek Ringkasan:*\n` +
+                `Ketik: _Saldo_ atau _Laporan_\n\n` +
+                `4️⃣ *Batalkan Input Terakhir:*\n` +
+                `Ketik: _Hapus_`
+        });
     }
 
     if (cmd === 'saldo' || cmd === 'laporan') {
         const data = readDB();
         const hariIni = new Date().toISOString().slice(0, 10);
-
         const totalMasuk = data.filter(d => d.tipe === 'pemasukan').reduce((a, b) => a + b.nominal, 0);
         const totalKeluar = data.filter(d => d.tipe === 'pengeluaran').reduce((a, b) => a + b.nominal, 0);
         const keluarHariIni = data
             .filter(d => d.tipe === 'pengeluaran' && d.tanggal.startsWith(hariIni))
             .reduce((a, b) => a + b.nominal, 0);
 
-        return msg.reply(
-            `📊 *Ringkasan Keuangan*\n\n` +
-            `📅 Pengeluaran Hari Ini: Rp${keluarHariIni.toLocaleString('id-ID')}\n` +
-            `────────────────────\n` +
-            `🟢 Total Pemasukan: Rp${totalMasuk.toLocaleString('id-ID')}\n` +
-            `🔴 Total Pengeluaran: Rp${totalKeluar.toLocaleString('id-ID')}\n` +
-            `💰 *Sisa Saldo: Rp${(totalMasuk - totalKeluar).toLocaleString('id-ID')}*`
-        );
+        return res.json({
+            reply:
+                `📊 *Ringkasan Keuangan*\n\n` +
+                `📅 Pengeluaran Hari Ini: Rp${keluarHariIni.toLocaleString('id-ID')}\n` +
+                `────────────────────\n` +
+                `🟢 Total Pemasukan: Rp${totalMasuk.toLocaleString('id-ID')}\n` +
+                `🔴 Total Pengeluaran: Rp${totalKeluar.toLocaleString('id-ID')}\n` +
+                `💰 *Sisa Saldo: Rp${(totalMasuk - totalKeluar).toLocaleString('id-ID')}*`
+        });
     }
 
     if (cmd === 'hapus' || cmd === 'batal') {
         const data = readDB();
-        if (data.length === 0) return msg.reply('ℹ️ Belum ada data transaksi untuk dihapus.');
+        if (data.length === 0) return res.json({ reply: 'ℹ️ Belum ada data transaksi untuk dihapus.' });
         const terhapus = data.shift();
         writeDB(data);
-        return msg.reply(`🗑️ Transaksi terakhir dihapus:\n_${terhapus.keterangan} (Rp${terhapus.nominal.toLocaleString('id-ID')})_`);
+        return res.json({
+            reply: `🗑️ Transaksi terakhir dihapus:\n_${terhapus.keterangan} (Rp${terhapus.nominal.toLocaleString('id-ID')})_`
+        });
     }
 
     const transaksi = parseTransaksi(pesan);
@@ -176,21 +142,25 @@ client.on('message_create', async (msg) => {
         writeDB(data);
 
         const icon = transaksi.tipe === 'pemasukan' ? '🟢' : '🔴';
-        await msg.reply(
-            `✅ *Tercatat!*\n` +
-            `${icon} ${transaksi.tipe.toUpperCase()} (${transaksi.kategori})\n` +
-            `📝 ${transaksi.keterangan}\n` +
-            `💰 Rp${transaksi.nominal.toLocaleString('id-ID')}`
-        );
+        return res.json({
+            reply:
+                `✅ *Tercatat!*\n` +
+                `${icon} ${transaksi.tipe.toUpperCase()} (${transaksi.kategori})\n` +
+                `📝 ${transaksi.keterangan}\n` +
+                `💰 Rp${transaksi.nominal.toLocaleString('id-ID')}`
+        });
     }
+
+    return res.json({ status: 'bukan_transaksi' });
 });
 
-client.initialize().catch((err) => {
-    console.error('⚠️ Gagal inisialisasi WA Client:', err.message);
-});
-
+// Status Endpoint untuk Dashboard
 app.get('/api/status', (req, res) => {
-    res.json({ status: waStatus, qr: latestQrDataUrl });
+    res.json({
+        status: 'Webhook Siap',
+        qr: null,
+        webhookUrl: '/api/webhook-wa'
+    });
 });
 
 app.get('/api/transaksi', (req, res) => {
